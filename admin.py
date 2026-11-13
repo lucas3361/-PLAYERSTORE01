@@ -3,6 +3,7 @@ from urllib.parse import urlparse
 import asyncio
 
 from log import log_erro
+from avisos import CONFIG_AVISOS_VENDAS
 
 from telegram import (
     Update,
@@ -151,12 +152,26 @@ async def anunciar_abastecimento_grupo(
 
         me = await context.bot.get_me()
 
+        try:
+            estoque_atual = consultar_estoque_logins(
+                produto_id
+            )
+        except Exception:
+            estoque_atual = None
+
+        linha_estoque = (
+            f"📊 Em estoque agora: {estoque_atual}\n"
+            if estoque_atual is not None
+            else ""
+        )
+
         texto_anuncio = (
             "🎉 *ESTOQUE ABASTECIDO!* "
             f"{nome_produto}\n\n"
             f"➕ Entraram "
             f"{quantidade_adicionada} "
             "login(s)\n"
+            f"{linha_estoque}"
             f"💰 A partir de R$ {preco:.2f}\n"
             "⚡ Corra antes que acabe — "
             "boas compras! 🛒🔥"
@@ -403,6 +418,17 @@ def menu_admin():
         == "1"
     )
 
+    avisos_vendas_ligados = (
+        obter_configuracao(CONFIG_AVISOS_VENDAS, "1")
+        == "1"
+    )
+
+    label_avisos_vendas = (
+        "🔔 AVISOS DE VENDA/SALDO: LIGADOS (tocar p/ desligar)"
+        if avisos_vendas_ligados
+        else "🔕 AVISOS DE VENDA/SALDO: DESLIGADOS (tocar p/ ligar)"
+    )
+
     label_chat_suporte = (
         "🆘 CHAT DE SUPORTE"
         if chat_suporte_ativo
@@ -505,6 +531,13 @@ def menu_admin():
             InlineKeyboardButton(
                 "🧹 LIMPEZA AUTOMÁTICA DO GRUPO",
                 callback_data="admin_limpeza_grupo",
+            )
+        ],
+
+        [
+            InlineKeyboardButton(
+                label_avisos_vendas,
+                callback_data="admin_toggle_avisos_vendas",
             )
         ],
 
@@ -5616,6 +5649,34 @@ async def botoes_admin(
     # =====================================================
 
     if acao == "admin_menu":
+
+        await abrir_admin(
+            update,
+            context,
+        )
+
+        return
+
+    if acao == "admin_toggle_avisos_vendas":
+
+        atual = obter_configuracao(
+            CONFIG_AVISOS_VENDAS,
+            "1",
+        )
+
+        novo = "0" if atual == "1" else "1"
+
+        definir_configuracao(
+            CONFIG_AVISOS_VENDAS,
+            novo,
+        )
+
+        await query.answer(
+            "🔔 Avisos de venda e saldo LIGADOS."
+            if novo == "1"
+            else "🔕 Avisos de venda e saldo DESLIGADOS.",
+            show_alert=True,
+        )
 
         await abrir_admin(
             update,

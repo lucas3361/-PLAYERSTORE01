@@ -36,6 +36,7 @@ from database import (
 )
 
 from pushinpay import consultar_pix
+from avisos import anunciar_saldo_grupo
 from menu import menu_principal
 from log import log_info, log_erro
 
@@ -161,6 +162,12 @@ async def _verificar_um_pagamento(
 
             novo_saldo = consultar_saldo(
                 usuario_id
+            )
+
+            await anunciar_saldo_grupo(
+                context.bot,
+                usuario_id,
+                valor,
             )
 
             try:

@@ -106,6 +106,10 @@ from catalogo import (
     listar_produtos,
 )
 from pushinpay import criar_pix, consultar_pix
+from avisos import (
+    avisos_vendas_ativos,
+    anunciar_saldo_grupo,
+)
 from restaurar import (
     comando_restaurar,
     cancelar_restauracao,
@@ -417,6 +421,9 @@ async def anunciar_venda_grupo(
     usuario_id=None,
 ):
     try:
+
+        if not avisos_vendas_ativos():
+            return
 
         grupo_id = obter_configuracao(
             "grupo_anuncios_id"
@@ -2161,6 +2168,12 @@ async def verificar_pagamento(
 
             if resultado:
                 saldo = consultar_saldo(usuario_id)
+
+                await anunciar_saldo_grupo(
+                    context.bot,
+                    usuario_id,
+                    valor,
+                )
 
                 await editar_ou_substituir(
                     query,
