@@ -1,1 +1,1 @@
-# -PLAYERSTORE01
+# playerstore-bot
