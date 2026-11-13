@@ -227,6 +227,21 @@ def criar_tabelas():
         pass
 
     # -----------------------------------------------------
+    # PRODUTO ARQUIVADO (exclusão que preserva o histórico)
+    # -----------------------------------------------------
+    # Produto com vendas não é apagado de verdade: fica com
+    # ativo = 0, some das listas, mas as contas já vendidas
+    # e os pedidos continuam no histórico dos clientes.
+
+    try:
+        cursor.execute("""
+            ALTER TABLE produtos
+            ADD COLUMN ativo INTEGER DEFAULT 1
+        """)
+    except sqlite3.OperationalError:
+        pass
+
+    # -----------------------------------------------------
     # XP / NÍVEL (preparado para uso futuro)
     # -----------------------------------------------------
 
@@ -1526,6 +1541,7 @@ def resumo_dashboard_admin():
         LEFT JOIN logins l
             ON l.produto_id = pr.id
             AND l.status = 'disponivel'
+        WHERE COALESCE(pr.ativo, 1) = 1
         GROUP BY pr.id
         HAVING disponiveis <= ?
         ORDER BY disponiveis ASC
@@ -1893,6 +1909,7 @@ def listar_todos_produtos():
             preco,
             estoque
         FROM produtos
+        WHERE COALESCE(ativo, 1) = 1
         ORDER BY id
     """)
 
@@ -2006,6 +2023,14 @@ def alterar_descricao_produto(
 def excluir_produto(
     produto_id,
 ):
+    """Exclui o produto sem destruir o histórico de vendas.
+
+    - Contas disponíveis (não vendidas) são sempre removidas.
+    - Sem nenhuma venda registrada: apaga o produto de vez.
+    - Com vendas: arquiva (ativo = 0, estoque = 0). Some das
+      listas, mas as contas vendidas, os pedidos e as
+      renovações dos clientes continuam funcionando.
+    Devolve False se o produto não existe."""
 
     conn = conectar()
     cursor = conn.cursor()
@@ -2024,16 +2049,36 @@ def excluir_produto(
             produto_id,
         ))
 
-        produto = cursor.fetchone()
-
-        if not produto:
+        if not cursor.fetchone():
 
             conn.rollback()
             conn.close()
 
             return False
 
-        # Remove relação com categoria
+        # Remove só o que ainda não foi vendido
+        cursor.execute("""
+            DELETE FROM logins
+            WHERE produto_id = ?
+            AND status = 'disponivel'
+        """, (
+            produto_id,
+        ))
+
+        cursor.execute("""
+            SELECT
+                (SELECT COUNT(*) FROM logins
+                 WHERE produto_id = ?),
+                (SELECT COUNT(*) FROM pedidos
+                 WHERE produto_id = ?)
+        """, (
+            produto_id,
+            produto_id,
+        ))
+
+        logins_restantes, pedidos = cursor.fetchone()
+
+        # Sai do catálogo em qualquer caso
         cursor.execute("""
             DELETE FROM produto_categorias
             WHERE produto_id = ?
@@ -2041,25 +2086,27 @@ def excluir_produto(
             produto_id,
         ))
 
-        # Remove logins do produto
-        cursor.execute("""
-            DELETE FROM logins
-            WHERE produto_id = ?
-        """, (
-            produto_id,
-        ))
+        if logins_restantes or pedidos:
 
-        # Remove produto
-        cursor.execute("""
-            DELETE FROM produtos
-            WHERE id = ?
-        """, (
-            produto_id,
-        ))
+            cursor.execute("""
+                UPDATE produtos
+                SET ativo = 0,
+                    estoque = 0
+                WHERE id = ?
+            """, (
+                produto_id,
+            ))
 
-        excluido = cursor.rowcount > 0
+        else:
 
-        if not excluido:
+            cursor.execute("""
+                DELETE FROM produtos
+                WHERE id = ?
+            """, (
+                produto_id,
+            ))
+
+        if cursor.rowcount != 1:
 
             conn.rollback()
             conn.close()
@@ -2077,6 +2124,32 @@ def excluir_produto(
         conn.close()
 
         raise
+
+
+def produto_tem_vendas(
+    produto_id,
+):
+
+    conn = conectar()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT
+            (SELECT COUNT(*) FROM logins
+             WHERE produto_id = ?
+             AND status != 'disponivel'),
+            (SELECT COUNT(*) FROM pedidos
+             WHERE produto_id = ?)
+    """, (
+        produto_id,
+        produto_id,
+    ))
+
+    vendidos, pedidos = cursor.fetchone()
+
+    conn.close()
+
+    return bool(vendidos or pedidos)
 
 
 def atualizar_estoque(
@@ -2253,6 +2326,7 @@ def listar_produtos_categoria(
             ON pc.produto_id = p.id
         WHERE pc.categoria_id = ?
         AND p.estoque > 0
+        AND COALESCE(p.ativo, 1) = 1
         ORDER BY p.id
     """, (
         categoria_id,
@@ -2285,6 +2359,7 @@ def buscar_produtos_por_nome(
         WHERE nome LIKE ?
         COLLATE NOCASE
         AND estoque > 0
+        AND COALESCE(ativo, 1) = 1
         ORDER BY nome
     """, (
         termo_like,

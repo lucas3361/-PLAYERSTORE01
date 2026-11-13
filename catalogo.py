@@ -151,6 +151,7 @@ def listar_produtos():
             estoque
         FROM produtos
         WHERE estoque > 0
+        AND COALESCE(ativo, 1) = 1
         ORDER BY id
         """
     )

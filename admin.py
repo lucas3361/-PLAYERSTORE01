@@ -34,6 +34,7 @@ from database import (
     alterar_nome_produto,
     alterar_descricao_produto,    cadastrar_produto,
     excluir_produto,
+    produto_tem_vendas,
     listar_categorias,
     definir_categoria_produto,
     consultar_categoria_produto,
@@ -5544,7 +5545,15 @@ async def confirmar_excluir_produto(
         f"📦 {produto[1]}\n"
         f"💰 R$ {float(produto[3]):.2f}\n"
         f"🔐 Contas disponíveis: {estoque}\n\n"
-        "⚠️ Esta ação excluirá o produto.\n"
+        + (
+            "ℹ️ Este produto já tem vendas: ele será "
+            "*arquivado* (some do catálogo e as contas "
+            "disponíveis são apagadas). O histórico e as "
+            "contas já vendidas aos clientes são mantidos.\n\n"
+            if produto_tem_vendas(produto_id)
+            else "⚠️ Esta ação excluirá o produto.\n"
+        )
+        + "Contas disponíveis serão apagadas. "
         "Essa operação não pode ser desfeita.",
         reply_markup=InlineKeyboardMarkup(
             [
