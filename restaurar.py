@@ -1,3 +1,4 @@
+import asyncio
 import os
 import sqlite3
 import tempfile
@@ -208,7 +209,10 @@ async def receber_banco_restaurar(
         arquivo = await documento.get_file()
         await arquivo.download_to_drive(caminho)
 
-        resumo = restaurar_de_arquivo(caminho)
+        resumo = await asyncio.to_thread(
+            restaurar_de_arquivo,
+            caminho,
+        )
 
         context.user_data.pop(CHAVE, None)
 

@@ -30,6 +30,30 @@ def conectar():
 
 
 # =========================================================
+# CÓPIA CONSISTENTE DO BANCO (BACKUP)
+# =========================================================
+
+def gerar_copia_banco(caminho_destino):
+    """Copia o banco em uso para caminho_destino usando a API
+    de backup do SQLite. Ao contrário de copiar o arquivo
+    direto, é consistente com o modo WAL (inclui o que ainda
+    está no arquivo -wal). É síncrona: chame com
+    asyncio.to_thread dentro de handlers async."""
+
+    origem = sqlite3.connect(
+        DATABASE_NAME,
+        timeout=30,
+    )
+    destino = sqlite3.connect(caminho_destino)
+
+    try:
+        origem.backup(destino)
+    finally:
+        destino.close()
+        origem.close()
+
+
+# =========================================================
 # CRIAR TABELAS
 # =========================================================
 

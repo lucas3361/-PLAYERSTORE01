@@ -646,12 +646,24 @@ async def enviar_backup_automatico(
     bot,
 ):
     import os
+    import shutil
+    import tempfile
+
+    from database import gerar_copia_banco
 
     if not os.path.exists(DATABASE_NAME):
         return
 
+    pasta = tempfile.mkdtemp()
+    caminho = os.path.join(pasta, "bot.db")
+
     try:
-        with open(DATABASE_NAME, "rb") as arquivo:
+        await asyncio.to_thread(
+            gerar_copia_banco,
+            caminho,
+        )
+
+        with open(caminho, "rb") as arquivo:
             await bot.send_document(
                 chat_id=ADMIN_ID,
                 document=arquivo,
@@ -666,6 +678,8 @@ async def enviar_backup_automatico(
             "ERRO NO BACKUP AUTOMÁTICO:",
             repr(erro),
         )
+    finally:
+        shutil.rmtree(pasta, ignore_errors=True)
 
 
 # =========================================================

@@ -36,6 +36,7 @@ from config import (
     ADMIN_ID,
 )
 
+from database import gerar_copia_banco
 from database import (
     criar_tabelas,
     criar_usuario,
@@ -3017,7 +3018,6 @@ async def comando_backup(
     from config import DATABASE_NAME
     import os as _os
     import shutil as _shutil
-    import sqlite3 as _sqlite3
     import tempfile as _tempfile
 
     if not _os.path.exists(DATABASE_NAME):
@@ -3031,19 +3031,8 @@ async def comando_backup(
     pasta = _tempfile.mkdtemp()
     caminho = _os.path.join(pasta, "bot.db")
 
-    def _copiar_banco():
-        # API de backup do SQLite: gera uma cópia consistente
-        # mesmo com o banco em modo WAL e em uso.
-        origem = _sqlite3.connect(DATABASE_NAME, timeout=30)
-        destino = _sqlite3.connect(caminho)
-        try:
-            origem.backup(destino)
-        finally:
-            destino.close()
-            origem.close()
-
     try:
-        await asyncio.to_thread(_copiar_banco)
+        await asyncio.to_thread(gerar_copia_banco, caminho)
 
         with open(caminho, "rb") as arquivo:
             await update.message.reply_document(
