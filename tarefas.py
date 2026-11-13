@@ -30,6 +30,7 @@ from database import (
     definir_configuracao,
     produto_mais_vendido_periodo,
     listar_todos_produtos,
+    obter_imagem_produto,
     listar_boas_vindas_vencidas,
     marcar_boas_vindas_apagada,
 )
@@ -713,6 +714,47 @@ def obter_qtd_divulgacoes_dia():
         return QTD_DIVULGACOES_PADRAO
 
 
+async def _postar_no_grupo(
+    bot,
+    grupo_id,
+    texto,
+    botao,
+    produto_id=None,
+):
+    """Envia o post com a imagem do produto (se houver) e,
+    se não houver imagem ou o envio da foto falhar, manda
+    só o texto."""
+
+    imagem = (
+        obter_imagem_produto(produto_id)
+        if produto_id
+        else None
+    )
+
+    if imagem:
+        try:
+            await bot.send_photo(
+                chat_id=grupo_id,
+                photo=imagem,
+                caption=texto,
+                reply_markup=botao,
+                parse_mode="Markdown",
+            )
+            return
+        except Exception as erro_foto:
+            log_erro(
+                "ERRO NO POST COM IMAGEM (vai como texto):",
+                repr(erro_foto),
+            )
+
+    await bot.send_message(
+        chat_id=grupo_id,
+        text=texto,
+        reply_markup=botao,
+        parse_mode="Markdown",
+    )
+
+
 async def enviar_post_divulgacao(bot):
     """Manda UM post de divulgação real pro grupo de
     anúncios: mais vendido da semana (se houve venda) ou,
@@ -748,19 +790,20 @@ async def enviar_post_divulgacao(bot):
         )
 
         if mais_vendido:
-            _, nome, qtd_vendida = mais_vendido
+            produto_id_vendido, nome, qtd_vendida = mais_vendido
 
-            await bot.send_message(
-                chat_id=grupo_id_int,
-                text=(
+            await _postar_no_grupo(
+                bot,
+                grupo_id_int,
+                (
                     "🔥 *MAIS VENDIDO DA SEMANA!*\n\n"
                     f"🏆 {nome}\n"
                     f"📦 {qtd_vendida} unidade(s) "
                     "vendida(s) nos últimos 7 dias\n\n"
                     "⚡ Garanta o seu antes que acabe!"
                 ),
-                reply_markup=botao,
-                parse_mode="Markdown",
+                botao,
+                produto_id_vendido,
             )
             return
 
@@ -780,13 +823,18 @@ async def enviar_post_divulgacao(bot):
         import time
 
         indice = int(time.time() // 3600) % len(produtos)
-        _, nome, descricao, preco, estoque = produtos[
-            indice
-        ]
+        (
+            produto_id_destaque,
+            nome,
+            descricao,
+            preco,
+            estoque,
+        ) = produtos[indice]
 
-        await bot.send_message(
-            chat_id=grupo_id_int,
-            text=(
+        await _postar_no_grupo(
+            bot,
+            grupo_id_int,
+            (
                 "✨ *DESTAQUE DA LOJA!*\n\n"
                 f"🛒 {nome}\n"
                 f"💰 R$ {float(preco):.2f}\n"
@@ -794,8 +842,8 @@ async def enviar_post_divulgacao(bot):
                 "em estoque\n\n"
                 "⚡ Peça já o seu!"
             ),
-            reply_markup=botao,
-            parse_mode="Markdown",
+            botao,
+            produto_id_destaque,
         )
 
     except Exception as erro:

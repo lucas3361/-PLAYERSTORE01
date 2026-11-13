@@ -151,33 +151,61 @@ async def anunciar_abastecimento_grupo(
 
         me = await context.bot.get_me()
 
-        mensagem_enviada = await context.bot.send_message(
-            chat_id=grupo_id_int,
-            text=(
-                "🎉 *ESTOQUE ABASTECIDO!* "
-                f"{nome_produto}\n\n"
-                f"➕ Entraram "
-                f"{quantidade_adicionada} "
-                "login(s)\n"
-                f"💰 A partir de R$ {preco:.2f}\n"
-                "⚡ Corra antes que acabe — "
-                "boas compras! 🛒🔥"
-            ),
-            reply_markup=InlineKeyboardMarkup(
-                [
-                    [
-                        InlineKeyboardButton(
-                            "🤖 Acessar o bot",
-                            url=(
-                                f"https://t.me/"
-                                f"{me.username}"
-                            ),
-                        )
-                    ]
-                ]
-            ),
-            parse_mode="Markdown",
+        texto_anuncio = (
+            "🎉 *ESTOQUE ABASTECIDO!* "
+            f"{nome_produto}\n\n"
+            f"➕ Entraram "
+            f"{quantidade_adicionada} "
+            "login(s)\n"
+            f"💰 A partir de R$ {preco:.2f}\n"
+            "⚡ Corra antes que acabe — "
+            "boas compras! 🛒🔥"
         )
+
+        botao_anuncio = InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton(
+                        "🤖 Acessar o bot",
+                        url=(
+                            f"https://t.me/"
+                            f"{me.username}"
+                        ),
+                    )
+                ]
+            ]
+        )
+
+        # Se o produto tem imagem cadastrada (URL ou foto
+        # enviada pelo painel), o anúncio sai como foto com
+        # legenda. Se não tem, ou se o Telegram não conseguir
+        # carregar a imagem, cai no texto simples de sempre.
+        mensagem_enviada = None
+        imagem_produto = obter_imagem_produto(produto_id)
+
+        if imagem_produto:
+            try:
+                mensagem_enviada = await context.bot.send_photo(
+                    chat_id=grupo_id_int,
+                    photo=imagem_produto,
+                    caption=texto_anuncio,
+                    reply_markup=botao_anuncio,
+                    parse_mode="Markdown",
+                )
+            except Exception as erro_foto:
+                log_erro(
+                    "ERRO AO ANUNCIAR COM IMAGEM "
+                    "(vai como texto):",
+                    repr(erro_foto),
+                )
+
+        if mensagem_enviada is None:
+            mensagem_enviada = await context.bot.send_message(
+                chat_id=grupo_id_int,
+                text=texto_anuncio,
+                reply_markup=botao_anuncio,
+                parse_mode="Markdown",
+            )
 
         registrar_mensagem_grupo_anuncios(
             grupo_id_int,
