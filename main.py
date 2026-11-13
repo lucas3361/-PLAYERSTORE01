@@ -2138,6 +2138,17 @@ async def verificar_pagamento(
         valor = float(pagamento[2])
         status_banco = pagamento[4]
 
+        # Só o dono do pagamento (ou o admin) pode consultar.
+        if (
+            query.from_user.id != usuario_id
+            and not eh_admin_principal(query.from_user.id)
+        ):
+            await query.answer(
+                "❌ Pagamento não encontrado.",
+                show_alert=True,
+            )
+            return
+
         if status_banco == "pago":
             saldo = consultar_saldo(usuario_id)
 
@@ -3005,6 +3016,9 @@ async def comando_backup(
 
     from config import DATABASE_NAME
     import os as _os
+    import shutil as _shutil
+    import sqlite3 as _sqlite3
+    import tempfile as _tempfile
 
     if not _os.path.exists(DATABASE_NAME):
         await update.message.reply_text(
@@ -3014,17 +3028,32 @@ async def comando_backup(
         )
         return
 
+    pasta = _tempfile.mkdtemp()
+    caminho = _os.path.join(pasta, "bot.db")
+
+    def _copiar_banco():
+        # API de backup do SQLite: gera uma cópia consistente
+        # mesmo com o banco em modo WAL e em uso.
+        origem = _sqlite3.connect(DATABASE_NAME, timeout=30)
+        destino = _sqlite3.connect(caminho)
+        try:
+            origem.backup(destino)
+        finally:
+            destino.close()
+            origem.close()
+
     try:
-        with open(DATABASE_NAME, "rb") as arquivo:
+        await asyncio.to_thread(_copiar_banco)
+
+        with open(caminho, "rb") as arquivo:
             await update.message.reply_document(
                 document=arquivo,
                 filename="bot.db",
                 caption=(
                     "💾 *BACKUP DO BANCO DE DADOS*\n\n"
                     "Guarde esse arquivo em local seguro. "
-                    "Pra restaurar, basta colocá-lo na "
-                    "pasta do bot com o mesmo nome "
-                    "(`bot.db`) antes de iniciar."
+                    "Para restaurar, use o /restaurar aqui "
+                    "no privado e envie este arquivo."
                 ),
                 parse_mode="Markdown",
             )
@@ -3036,6 +3065,8 @@ async def comando_backup(
         await update.message.reply_text(
             "❌ Não foi possível enviar o backup."
         )
+    finally:
+        _shutil.rmtree(pasta, ignore_errors=True)
 
 
 # =========================================================

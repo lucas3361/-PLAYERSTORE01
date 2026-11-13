@@ -3047,7 +3047,9 @@ def processar_compra_login(
             }
 
         cursor.execute("""
-            SELECT saldo
+            SELECT
+                saldo,
+                COALESCE(limite_credito, 0)
             FROM usuarios
             WHERE id = ?
         """, (
@@ -3070,7 +3072,13 @@ def processar_compra_login(
             usuario[0]
         )
 
-        if saldo < preco:
+        limite_credito = float(
+            usuario[1]
+        )
+
+        # Mesma regra do retirar_saldo: o cliente pode
+        # ficar negativo até o limite de crédito liberado.
+        if round(saldo + limite_credito, 2) < preco:
 
             conn.rollback()
             conn.close()
@@ -3080,7 +3088,10 @@ def processar_compra_login(
                 "erro": "saldo_insuficiente",
                 "saldo": saldo,
                 "preco": preco,
-                "faltam": preco - saldo,
+                "faltam": round(
+                    preco - (saldo + limite_credito),
+                    2,
+                ),
             }
 
         cursor.execute("""
@@ -3115,7 +3126,7 @@ def processar_compra_login(
             UPDATE usuarios
             SET saldo = ROUND(saldo - ?, 2)
             WHERE id = ?
-            AND saldo >= ?
+            AND (saldo + COALESCE(limite_credito, 0)) >= ?
         """, (
             preco,
             usuario_id,
