@@ -1090,7 +1090,8 @@ def obter_detalhes_pedido(
             pr.nome,
             p.quantidade,
             p.valor,
-            p.criado_em
+            p.criado_em,
+            pr.duracao_dias
         FROM pedidos p
         JOIN produtos pr ON pr.id = p.produto_id
         WHERE p.id = ?
@@ -1127,6 +1128,7 @@ def obter_detalhes_pedido(
         "quantidade": pedido[2],
         "valor": pedido[3],
         "criado_em": pedido[4],
+        "duracao_dias": pedido[5],
         "contas": contas,
     }
 

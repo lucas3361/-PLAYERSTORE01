@@ -37,7 +37,13 @@ from config import (
 )
 
 from database import gerar_copia_banco
+from comprovante import (
+    montar_comprovante,
+    de_utc,
+    data_hora_curta,
+)
 from database import (
+    obter_duracao_produto,
     criar_tabelas,
     criar_usuario,
     listar_pedidos_cliente,
@@ -854,9 +860,9 @@ def montar_mensagem_compra_realizada(
     total,
     novo_saldo,
 ):
-    """Monta a mensagem de entrega no MESMO formato fixo
-    para qualquer compra (produto único ou carrinho com
-    vários produtos), sempre começando com o agradecimento.
+    """Mensagem de entrega no MESMO formato fixo para qualquer
+    compra (produto único ou carrinho), com agradecimento,
+    data/hora da compra e dados de acesso.
 
     `itens` é uma lista de dicts:
         {
@@ -864,52 +870,16 @@ def montar_mensagem_compra_realizada(
             "quantidade": int,
             "preco_unitario": float,
             "contas": [dados1, dados2, ...],
+            "pedido_id": int (opcional),
+            "duracao_dias": int (opcional),
         }
     """
 
-    texto = (
-        "🙏 *Obrigado pela sua compra!*\n\n"
-        "✅ *COMPRA REALIZADA COM SUCESSO*\n"
-        "━━━━━━━━━━━━━━━━━━\n"
+    return montar_comprovante(
+        itens=itens,
+        total=total,
+        novo_saldo=novo_saldo,
     )
-
-    for item in itens:
-
-        subtotal = (
-            item["preco_unitario"]
-            * item["quantidade"]
-        )
-
-        texto += (
-            f"🛒 *Produto:* {item['nome']}\n"
-            f"📦 *Quantidade:* "
-            f"{item['quantidade']}\n"
-            f"💰 *Preço unitário:* R$ "
-            f"{item['preco_unitario']:.2f}\n"
-            f"💵 *Subtotal:* R$ {subtotal:.2f}\n\n"
-        )
-
-        texto += "🎁 *SEUS DADOS DE ACESSO*\n"
-
-        for indice, dados in enumerate(
-            item["contas"], start=1
-        ):
-            texto += (
-                f"🔐 *Conta {indice}*\n"
-                f"```\n{dados}\n```\n"
-            )
-
-        texto += "\n"
-
-    texto += (
-        "━━━━━━━━━━━━━━━━━━\n\n"
-        f"💵 *Total pago:* R$ {total:.2f}\n"
-        f"💳 *Saldo restante:* R$ {novo_saldo:.2f}\n\n"
-        "⚡ Entrega realizada automaticamente.\n"
-        "💬 Qualquer dúvida, é só chamar o suporte!"
-    )
-
-    return texto
 
 
 async def enviar_lembrete_compra(
@@ -1354,6 +1324,10 @@ async def comprar_produto(
                 "quantidade": quantidade,
                 "preco_unitario": preco,
                 "contas": contas_entregues,
+                "pedido_id": pedido_id,
+                "duracao_dias": obter_duracao_produto(
+                    produto_id
+                ),
             }
         ],
         total=valor_total,
@@ -3515,7 +3489,7 @@ async def mostrar_historico_compras(
         criado_em,
     ) in pedidos:
 
-        data_formatada = str(criado_em)[:10]
+        data_formatada = data_hora_curta(criado_em)
 
         linhas_botoes.append([
             InlineKeyboardButton(
@@ -3596,43 +3570,33 @@ async def mostrar_detalhes_pedido(
         )
         return
 
-    texto_contas = ""
+    quantidade = int(detalhes["quantidade"])
 
-    for indice, dados in enumerate(
-        detalhes["contas"], start=1
-    ):
-        texto_contas += (
-            f"\n🔐 *Conta {indice}*\n"
-            f"```\n{dados}\n```\n"
-        )
-
-    if not texto_contas:
-        texto_contas = (
-            "\n⚠️ Nenhum dado de acesso "
-            "encontrado pra essa compra — "
-            "fale com o suporte se precisar "
-            "de ajuda.\n"
-        )
-
-    data_formatada = str(
-        detalhes["criado_em"]
-    )[:16]
+    texto = montar_comprovante(
+        itens=[
+            {
+                "nome": detalhes["nome_produto"],
+                "quantidade": quantidade,
+                "preco_unitario": (
+                    float(detalhes["valor"]) / quantidade
+                    if quantidade
+                    else float(detalhes["valor"])
+                ),
+                "contas": detalhes["contas"],
+                "pedido_id": detalhes["id"],
+                "duracao_dias": detalhes.get("duracao_dias"),
+            }
+        ],
+        quando=de_utc(detalhes["criado_em"]),
+        total=detalhes["valor"],
+        agradecer=False,
+        rodape=False,
+    )
 
     await editar_ou_substituir(
         query,
         context,
-        "🧾 *DETALHES DA COMPRA*\n\n"
-        "━━━━━━━━━━━━━━━━━━\n"
-        f"🛒 *Produto:* "
-        f"{detalhes['nome_produto']}\n"
-        f"📦 *Quantidade:* "
-        f"{detalhes['quantidade']}\n"
-        f"💵 *Valor pago:* "
-        f"R$ {float(detalhes['valor']):.2f}\n"
-        f"📅 *Data:* {data_formatada}\n"
-        "━━━━━━━━━━━━━━━━━━\n"
-        "🎁 *DADOS DE ACESSO*"
-        f"{texto_contas}",
+        texto,
         reply_markup=InlineKeyboardMarkup(
             [
                 [
@@ -4164,6 +4128,10 @@ async def finalizar_compra_carrinho(
                 "quantidade": quantidade,
                 "preco_unitario": preco,
                 "contas": contas_produto,
+                "pedido_id": pedido_id,
+                "duracao_dias": obter_duracao_produto(
+                    produto_id
+                ),
             }
         )
 
