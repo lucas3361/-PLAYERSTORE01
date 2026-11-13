@@ -426,6 +426,7 @@ async def anunciar_venda_grupo(
     quantidade=1,
     nome_cliente=None,
     usuario_id=None,
+    produto_id=None,
 ):
     try:
 
@@ -469,32 +470,65 @@ async def anunciar_venda_grupo(
             nome_cliente, usuario_id
         )
 
-        mensagem_enviada = await bot.send_message(
-            chat_id=grupo_id_int,
-            text=(
-                "🎉 *NOVA VENDA REALIZADA!*\n\n"
-                f"👤 {identificacao} comprou: "
-                f"{nome_produto}\n"
-                f"{linha_quantidade}"
-                f"💰 R$ {valor_total:.2f}\n"
-                "⚡ Corra antes que acabe — "
-                "boas compras! 🛒🔥"
-            ),
-            reply_markup=InlineKeyboardMarkup(
-                [
-                    [
-                        InlineKeyboardButton(
-                            "🤖 Acessar o bot",
-                            url=(
-                                f"https://t.me/"
-                                f"{me.username}"
-                            ),
-                        )
-                    ]
-                ]
-            ),
-            parse_mode="Markdown",
+        texto_anuncio = (
+            "🎉 *NOVA VENDA REALIZADA!*\n\n"
+            f"👤 {identificacao} comprou: "
+            f"{nome_produto}\n"
+            f"{linha_quantidade}"
+            f"💰 R$ {valor_total:.2f}\n"
+            "⚡ Corra antes que acabe — "
+            "boas compras! 🛒🔥"
         )
+
+        botao_anuncio = InlineKeyboardMarkup(
+            [
+                [
+                    InlineKeyboardButton(
+                        "🤖 Acessar o bot",
+                        url=(
+                            f"https://t.me/"
+                            f"{me.username}"
+                        ),
+                    )
+                ]
+            ]
+        )
+
+        # Se o produto tem imagem cadastrada, o aviso sai como
+        # foto com legenda (igual ao aviso de estoque). Sem
+        # imagem, ou se o Telegram não conseguir carregá-la,
+        # cai no texto simples de sempre.
+        mensagem_enviada = None
+
+        imagem_produto = (
+            obter_imagem_produto(produto_id)
+            if produto_id
+            else None
+        )
+
+        if imagem_produto:
+            try:
+                mensagem_enviada = await bot.send_photo(
+                    chat_id=grupo_id_int,
+                    photo=imagem_produto,
+                    caption=texto_anuncio,
+                    reply_markup=botao_anuncio,
+                    parse_mode="Markdown",
+                )
+            except Exception as erro_foto:
+                log_erro(
+                    "ERRO AO ANUNCIAR VENDA COM IMAGEM "
+                    "(vai como texto):",
+                    repr(erro_foto),
+                )
+
+        if mensagem_enviada is None:
+            mensagem_enviada = await bot.send_message(
+                chat_id=grupo_id_int,
+                text=texto_anuncio,
+                reply_markup=botao_anuncio,
+                parse_mode="Markdown",
+            )
 
         registrar_mensagem_grupo_anuncios(
             grupo_id_int,
@@ -1315,6 +1349,7 @@ async def comprar_produto(
         quantidade,
         nome_cliente=query.from_user.first_name,
         usuario_id=usuario_id,
+        produto_id=produto_id,
     )
 
     texto = montar_mensagem_compra_realizada(
@@ -4148,6 +4183,7 @@ async def finalizar_compra_carrinho(
             quantidade,
             nome_cliente=query.from_user.first_name,
             usuario_id=usuario_id,
+            produto_id=produto_id,
         )
 
     if falhou:
