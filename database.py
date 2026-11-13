@@ -1,4 +1,7 @@
+import os
 import sqlite3
+
+from dinheiro import normalizar
 
 from config import DATABASE_NAME
 
@@ -560,7 +563,75 @@ def criar_tabelas():
         """)
 
     conn.commit()
+
+    _normalizar_valores_existentes(conn)
+
     conn.close()
+
+
+# =========================================================
+# NORMALIZAÇÃO DOS VALORES JÁ GRAVADOS
+# =========================================================
+
+_COLUNAS_DINHEIRO = (
+    ("usuarios", "saldo"),
+    ("usuarios", "limite_credito"),
+    ("produtos", "preco"),
+    ("pedidos", "valor"),
+    ("pagamentos", "valor"),
+    ("encomendas", "valor"),
+)
+
+
+def _normalizar_valores_existentes(conn):
+    """Arredonda para 2 casas os valores em dinheiro que já
+    estão no banco com ruído de float. Idempotente: se está
+    tudo certo, não altera nada. Antes de alterar, guarda uma
+    cópia do banco em <banco>.antes_normalizar (só na 1ª vez),
+    para dar para voltar atrás."""
+
+    from log import log_info
+
+    cursor = conn.cursor()
+
+    pendentes = {}
+
+    for tabela, coluna in _COLUNAS_DINHEIRO:
+        cursor.execute(f"""
+            SELECT COUNT(*)
+            FROM {tabela}
+            WHERE {coluna} IS NOT NULL
+            AND {coluna} != ROUND({coluna}, 2)
+        """)
+        total = cursor.fetchone()[0]
+        if total:
+            pendentes[(tabela, coluna)] = total
+
+    if not pendentes:
+        return
+
+    copia = DATABASE_NAME + ".antes_normalizar"
+
+    if not os.path.exists(copia):
+        destino = sqlite3.connect(copia)
+        try:
+            conn.backup(destino)
+        finally:
+            destino.close()
+
+    for (tabela, coluna), total in pendentes.items():
+        cursor.execute(f"""
+            UPDATE {tabela}
+            SET {coluna} = ROUND({coluna}, 2)
+            WHERE {coluna} IS NOT NULL
+            AND {coluna} != ROUND({coluna}, 2)
+        """)
+        log_info(
+            f"💰 Normalizados {total} valor(es) em "
+            f"{tabela}.{coluna} para 2 casas decimais."
+        )
+
+    conn.commit()
 
 
 # =========================================================
@@ -1752,7 +1823,7 @@ def adicionar_saldo(
         SET saldo = ROUND(saldo + ?, 2)
         WHERE id = ?
     """, (
-        float(valor),
+        normalizar(valor),
         user_id,
     ))
 
@@ -1780,11 +1851,11 @@ def retirar_saldo(
         UPDATE usuarios
         SET saldo = ROUND(saldo - ?, 2)
         WHERE id = ?
-        AND (saldo + COALESCE(limite_credito, 0)) >= ?
+        AND ROUND(saldo + COALESCE(limite_credito, 0), 2) >= ?
     """, (
-        float(valor),
+        normalizar(valor),
         user_id,
-        float(valor),
+        normalizar(valor),
     ))
 
     alterado = cursor.rowcount > 0
@@ -1808,7 +1879,7 @@ def definir_limite_credito(
         SET limite_credito = ?
         WHERE id = ?
     """, (
-        float(limite),
+        normalizar(limite),
         user_id,
     ))
 
@@ -1868,7 +1939,7 @@ def adicionar_produto(
     """, (
         nome,
         descricao,
-        float(preco),
+        normalizar(preco),
         int(estoque),
     ))
 
@@ -1958,7 +2029,7 @@ def alterar_preco(
         SET preco = ?
         WHERE id = ?
     """, (
-        float(preco),
+        normalizar(preco),
         produto_id,
     ))
 
@@ -3225,7 +3296,7 @@ def processar_compra_login(
             UPDATE usuarios
             SET saldo = ROUND(saldo - ?, 2)
             WHERE id = ?
-            AND (saldo + COALESCE(limite_credito, 0)) >= ?
+            AND ROUND(saldo + COALESCE(limite_credito, 0), 2) >= ?
         """, (
             preco,
             usuario_id,
@@ -3425,7 +3496,7 @@ def criar_pagamento(
         VALUES (?, ?, ?, 'pendente')
     """, (
         usuario_id,
-        float(valor),
+        normalizar(valor),
         pushinpay_id,
     ))
 
@@ -3965,7 +4036,7 @@ def definir_valor_encomenda(
         WHERE id = ?
         AND status = 'aguardando_valor'
     """, (
-        float(valor),
+        normalizar(valor),
         encomenda_id,
     ))
 
